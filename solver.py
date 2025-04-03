@@ -6,67 +6,324 @@ import numpy as np
 from itertools import product
 
 
-def calculate_priority_and_constraints(df_wonen, df_niet_wonen, df_constraints, df_constraints_perc):
-    M = 1e8
-    df_wonen['m2 nodig'] = df_wonen['BVO'] / df_wonen['Min lagen'] / df_wonen['Bebouwd']
-    df_wonen['Grondwaarde/woning'] = df_wonen['Residuele grondwaarde per woning']
-    df_wonen['Min lagen'] = df_wonen['Min lagen'].fillna(1)
-    df_wonen['Max lagen'] = df_wonen['Max lagen'].fillna(100)
+def extract_constraints(df_constraints_context, df_constraints_program, df_constraints_program_perc, df_constraints_ruimtelijk, df_constraints_financieel):
+    
+    def mm(df, row):
+        vals = df.loc[row, ["Min", "Max"]]
+        vals = pd.to_numeric(vals, errors='coerce')
+        return vals
+    
+    def k(df, row):
+        val = df.loc[row, "Kosten"]
+        return val
 
-    df_niet_wonen['m2'] = 1
-    df_niet_wonen['m2 nodig'] = df_niet_wonen['m2']
-    df_niet_wonen['Residuele grondwaarde/m2'] = df_niet_wonen['Residuele grondwaarde m2 uitgeefbaar'] * df_niet_wonen['Uitgeefbaar']
+    def e(df, row):
+        val = df.loc[row, "Gestelde eis"]
+        return val
+    
+    constraints ={
+        'opp': e(df_constraints_context, "Oppervlakte gebied"),
+        'grondwaarde': (e(df_constraints_context, "Minimale totale grondwaarde"), 
+                        e(df_constraints_context, "Maximale totale grondwaarde")),
 
-    df_constraints['Min'] = pd.to_numeric(df_constraints['Min'], errors='coerce')
-    df_constraints['Min'] = df_constraints['Min'].fillna(0)
-    df_constraints['Max'] = pd.to_numeric(df_constraints['Max'], errors='coerce')
-    df_constraints['Max'] = df_constraints['Max'].fillna(M)
+        'woningen': mm(df_constraints_program, "Totaal aantal woningen"),
+        'sociaal': mm(df_constraints_program, "Aantal sociale woningen"),
+        'betaalbaar': mm(df_constraints_program, "Aantal betaalbare/ middenhuur woningen"),
+        'niet_wonen_comm': mm(df_constraints_program, "Aantal m² commercieel vastgoed"),
+        'niet_wonen_maat': mm(df_constraints_program, "Aantal m² maatschappelijk vastgoed"),
 
-    df_constraints_perc['Min'] = pd.to_numeric(df_constraints_perc['Min'], errors='coerce')
-    df_constraints_perc['Min'] = df_constraints_perc['Min'].fillna(0)
-    df_constraints_perc['Max'] = pd.to_numeric(df_constraints_perc['Max'], errors='coerce')
-    df_constraints_perc['Max'] = df_constraints_perc['Max'].fillna(100)
+        'perc_sociaal': mm(df_constraints_program_perc, "Percentage sociale woningen") / 100,
+        'perc_betaalbaar': mm(df_constraints_program_perc, "Percentage betaalbare/ middenhuur woningen") / 100,
 
-    constraints = {
-        #min constraints
-        'min_opp': df_constraints.loc[df_constraints['Constraint'] == 'Oppervlakte gebied', 'Min'].values[0],
-        'min_woningen': df_constraints.loc[df_constraints['Constraint'] == 'Woningen', 'Min'].values[0],
-        'min_sociaal': df_constraints.loc[df_constraints['Constraint'] == 'Sociaal', 'Min'].values[0],
-        'min_betaalbaar': df_constraints.loc[df_constraints['Constraint'] == 'Betaalbaar/ Middenhuur', 'Min'].values[0],
-        'min_niet_wonen': df_constraints.loc[df_constraints['Constraint'] == 'Niet-wonen', 'Min'].values[0],
-        'min_niet_wonen_comm': df_constraints.loc[df_constraints['Constraint'] == 'Niet-wonen (commercieel)', 'Min'].values[0],
-        'min_grondwaarde': df_constraints.loc[df_constraints['Constraint'] == 'Grondwaarde', 'Min'].values[0],
-        
-        'min_perc_sociaal': df_constraints_perc.loc[df_constraints_perc['Constraint'] == 'Sociaal perc.', 'Min'].values[0]/100,
-        'min_perc_betaalbaar': df_constraints_perc.loc[df_constraints_perc['Constraint'] == 'Betaalbaar/ Middenhuur perc.', 'Min'].values[0]/100,
+        'norm_groen_pw': mm(df_constraints_ruimtelijk, "Groennorm per woning"),
+        'norm_water_pw': mm(df_constraints_ruimtelijk, "Waternorm per woning"),
+        'opp_groen': mm(df_constraints_ruimtelijk, "Aantal m² groen"),
+        'opp_water': mm(df_constraints_ruimtelijk, "Aantal m² water"),
 
-        'min_norm_groen': df_constraints.loc[df_constraints['Constraint'] == 'Groennorm', 'Min'].values[0],
-        'min_norm_water': df_constraints.loc[df_constraints['Constraint'] == 'Waternorm', 'Min'].values[0],
-        'min_opp_groen': df_constraints.loc[df_constraints['Constraint'] == 'Groen', 'Min'].values[0],
-        'min_opp_water': df_constraints.loc[df_constraints['Constraint'] == 'Water', 'Min'].values[0],
-
-        #max constraints
-        'max_opp': df_constraints.loc[df_constraints['Constraint'] == 'Oppervlakte gebied', 'Max'].values[0],
-        'max_woningen': df_constraints.loc[df_constraints['Constraint'] == 'Woningen', 'Max'].values[0],
-        'max_sociaal': df_constraints.loc[df_constraints['Constraint'] == 'Sociaal', 'Max'].values[0],
-        'max_betaalbaar': df_constraints.loc[df_constraints['Constraint'] == 'Betaalbaar/ Middenhuur', 'Max'].values[0],
-        'max_niet_wonen': df_constraints.loc[df_constraints['Constraint'] == 'Niet-wonen', 'Max'].values[0],
-        'max_niet_wonen_comm': df_constraints.loc[df_constraints['Constraint'] == 'Niet-wonen (commercieel)', 'Max'].values[0],
-        'max_grondwaarde': df_constraints.loc[df_constraints['Constraint'] == 'Grondwaarde', 'Max'].values[0],
-
-        'max_perc_sociaal': df_constraints_perc.loc[df_constraints_perc['Constraint'] == 'Sociaal perc.', 'Max'].values[0]/100,
-        'max_perc_betaalbaar': df_constraints_perc.loc[df_constraints_perc['Constraint'] == 'Betaalbaar/ Middenhuur perc.', 'Max'].values[0]/100,
-
-        'max_norm_groen': df_constraints.loc[df_constraints['Constraint'] == 'Groennorm', 'Max'].values[0],
-        'max_norm_water': df_constraints.loc[df_constraints['Constraint'] == 'Waternorm', 'Max'].values[0],
-        'max_opp_groen': df_constraints.loc[df_constraints['Constraint'] == 'Groen', 'Max'].values[0],
-        'max_opp_water': df_constraints.loc[df_constraints['Constraint'] == 'Water', 'Max'].values[0],
+        'kosten_groen': k(df_constraints_financieel, "Kosten Groen"),
+        'kosten_water': k(df_constraints_financieel, "Kosten Water"),
+        'kosten_infra': k(df_constraints_financieel, "Kosten Infrastructuur"),
+        'kosten_bouwrijp': k(df_constraints_financieel, "Bouwrijp maken gebied"),
     }
+    return constraints
 
-    return df_wonen, df_niet_wonen, constraints
+def solve(
+                df_wonen,
+                df_nwonen_comm,
+                df_nwonen_maat,
+                df_wonen_parkeren,
+                df_parkeren_type,
+                df_constraints_context,
+                df_constraints_program,
+                df_constraints_program_perc,
+                df_constraints_ruimtelijk,
+                df_constraints_financieel,       
+                optimize_for,
+                optimize_for_2
+            ):
+    df_wonen = df_wonen.copy()
+    df_nwonen_comm = df_nwonen_comm.copy()
+    df_nwonen_maat = df_nwonen_maat.copy()
+    df_wonen_parkeren = df_wonen_parkeren.copy()
+    df_parkeren_type = df_parkeren_type.copy()
+    df_constraints_context = df_constraints_context.copy().set_index("Randvoorwaarden")
+    df_constraints_program = df_constraints_program.copy().set_index("Randvoorwaarden")
+    df_constraints_program_perc = df_constraints_program_perc.copy().set_index("Randvoorwaarden")
+    df_constraints_ruimtelijk = df_constraints_ruimtelijk.copy().set_index("Randvoorwaarden")
+    df_constraints_financieel = df_constraints_financieel.copy().set_index("Randvoorwaarden")    
 
-def solver(df_wonen, df_nwonen_comm, df_nwonen_maat, df_wonen_parkeren, df_parkeren_type, df_constraints, df_constraints_perc, df_kosten, optimize_for='Grondwaarde', optimize_for_2 = "Geen"):
+
+
+
+    # Extract constraint values
+    constraints = extract_constraints(df_constraints_context, 
+                                    df_constraints_program, 
+                                    df_constraints_program_perc, 
+                                    df_constraints_ruimtelijk, 
+                                    df_constraints_financieel)
+    
+    assert not pd.isna(constraints["opp"]), "Stel een eis aan het oppervlakte van het gebied."
+    assert not pd.isna(constraints["kosten_groen"]), "Vul de kosten voor groen in."
+    assert not pd.isna(constraints["kosten_water"]), "Vul de kosten voor water in."
+    assert not pd.isna(constraints["kosten_infra"]), "Vul de kosten voor infrastructuur in."
+    assert not pd.isna(constraints["kosten_bouwrijp"]), "Vul de kosten voor bouwrijp maken in."
+
+    # Merge niet wonen types
+    df_nwonen_comm['Commercieel'] = True
+    df_nwonen_comm['Maatschappelijk'] = False
+    df_nwonen_maat['Commercieel'] = False
+    df_nwonen_maat['Maatschappelijk'] = True
+    df_niet_wonen = pd.concat([df_nwonen_comm, df_nwonen_maat])
+
+    df_wonen = df_wonen.dropna(axis=0, how='all')
+    df_niet_wonen = df_niet_wonen.dropna(axis=0, how='all')
+    df_wonen_parkeren = df_wonen_parkeren.dropna(axis=0, how='all')
+    df_parkeren_type = df_parkeren_type.dropna(axis=0, how='all')
+
+    df_parkeren_type.rename(columns={"Parkeer typologiën": "Type"}, inplace=True)
+    index_by_type(df_wonen)
+    index_by_type(df_niet_wonen)
+    index_by_type(df_wonen_parkeren)
+    index_by_type(df_parkeren_type)
+
+
+    # We add a relevant column from df_wonen_parkeren to df_wonen
+    # We want to do this in the DataFrame to make our lives easier once we make the dictionaries
+    # We use join to make sure it does not break down if one of the two data frames has a different order of the types
+    # DO THIS BEFORE SPLITTING LAYERS
+
+    df_wonen_parkeren["Waarvan parkeren buiten eigen terrein"] = (df_wonen_parkeren["Parkeernorm inclusief korting"].fillna(0) - 
+                                                                  df_wonen_parkeren["Waarvan parkeren op eigen terrein"].fillna(0))
+    df_wonen = df_wonen.join(df_wonen_parkeren[['Waarvan parkeren buiten eigen terrein']])
+  
+ 
+    df_wonen = split_layers(
+                            df_wonen, df_wonen["Minimaal aantal bouwlagen"], 
+                            df_wonen["Maximaal aantal bouwlagen"], 
+                            df_wonen["Variabel aantal bouwlagen (voor gestapelde bouw)"])
+    df_parkeren_type = split_layers(df_parkeren_type, 1, 
+                                    df_parkeren_type["Maximaal aantal lagen"], 
+                                    True)
+
+    assert_column_filled(df_wonen["BVO (m²)"])
+    assert_column_filled(df_wonen["Lagen"])
+    assert_column_filled(df_wonen["Percentage bebouwd perceel (%)"])
+    df_wonen["Uitgeefbaar"] = df_wonen["BVO (m²)"] / df_wonen["Lagen"] / (df_wonen["Percentage bebouwd perceel (%)"] / 100)
+    assert_column_filled(df_wonen["Gemiddelde residuele grondwaarde per woning (€)"])
+    df_wonen["Grondwaarde per woning"] = df_wonen["Gemiddelde residuele grondwaarde per woning (€)"]
+
+    assert_column_filled(df_niet_wonen["Aantal bouwlagen"])
+    assert_column_filled(df_niet_wonen["Percentage bebouwd perceel (%)"])
+    df_niet_wonen["Uitgeefbaar per m² VVO"] = df_niet_wonen["Aantal bouwlagen"] / (df_niet_wonen["Percentage bebouwd perceel (%)"] / 100)
+
+    prob, (aw, yh, ap, vnw, g, w), (context, grondwaarde, ruimtelijk, programma, parkeren) = build_lp(df_wonen, 
+                                                                                                      df_niet_wonen, 
+                                                                                                      df_parkeren_type, 
+                                                                                                      constraints)
+
+    objective, obj_name = get_objective(context, grondwaarde,ruimtelijk, programma, parkeren, optimize_for)
+    prob.name = obj_name
+    prob.setObjective(objective)
+
+    prob.solve(PULP_CBC_CMD(msg=False))
+    status = prob.status
+    
+
+    print(prob)
+    
+    if status == 1:
+        print_ouput(prob, aw, yh, ap, vnw, g, w, context, grondwaarde, ruimtelijk, programma, parkeren)
+    else:
+        print("No solution found for objective 1:", optimize_for)
+        raise ValueError("No solution found for given input and constraints")
+
+    if optimize_for_2 != "Geen" and optimize_for_2 != optimize_for:
+        set_pre_optimized_constraints(prob, context, grondwaarde, ruimtelijk, programma, parkeren, 
+                                      optimize_for, 
+                                      objective.value())
+        
+        objective_2, obj_name_2 = get_objective(context, grondwaarde, ruimtelijk, programma, parkeren, optimize_for_2)
+        prob.setObjective(objective_2)
+        prob.name = f"First_{obj_name}_Second_{obj_name_2}"
+
+        prob.solve(PULP_CBC_CMD(msg=False))
+        status = prob.status
+
+        if status == 1:
+            print_ouput(prob, aw, yh, ap, vnw, g, w, context, grondwaarde, ruimtelijk, programma, parkeren)
+        else:
+            print("No solution found for objective 2:", optimize_for_2)
+            raise ValueError("No solution found for given input and constraints")
+
+    else:
+        print("No second optimization run because optimize_for_2 is Geen or the same as optimize_for")
+
+    return create_result_dfs(df_wonen, df_niet_wonen, df_parkeren_type,
+                      aw, yh, ap, vnw, g, w, 
+                      context, grondwaarde, ruimtelijk, programma, parkeren)
+
+
+def print_ouput(prob, aw, yh, ap, vnw, g, w, context, grondwaarde, ruimtelijk, programma, parkeren):
+    print("Status:", LpStatus[prob.status])
+    print("Output:")
+    for d, name in zip([aw, yh, ap, vnw], ["Aantal woningen", "Use woning type", "Aantal parkeren", "VVO niet-wonen"]):
+        print("===VARIABLEA:",name)
+        for key, value in d.items():
+            print(key, value.value())
+    print("===Groen", g.value())
+    print("===Water", w.value())
+    for d, name in zip([context, grondwaarde, ruimtelijk, programma, parkeren], ["context", "grondwaarde", "ruimtelijk", "programma", "parkeren"]):
+        print("===VARIABLE DICTIONARY:",name)
+        for key, value in d.items():
+            print(key, value.value())
+
+
+def create_result_dfs(df_wonen, df_niet_wonen, df_parkeren_type,
+                      aw, yh, ap, vnw, g, w, 
+                      context, grondwaarde, ruimtelijk, programma, parkeren):
+    out_context = pd.DataFrame([
+        ["Oppervlakte gebied", context["opp"].value(), "m²"],
+        ["Totale residuele grondwaarde", context["grondwaarde"].value(), "€"]],
+        columns=["Onderdeel", "Waarde", "Eenheid"])
+
+    out_ruimtelijk = pd.DataFrame([
+        ["Totaal uitgeefbaar gebied", ruimtelijk["opp_uitgeefbaar"].value(), "m²"],
+        ["Totaal oppervlak infrastructuur (exclusief parkeren)", ruimtelijk["opp_infra_ex_parkeren"].value(), "m²"],
+        ["Totaal oppervlak parkeren", ruimtelijk["opp_parkeren"].value(), "m²"],
+        ["Totaal groen", g.value(), "m²"],
+        ["Totaal water", w.value(), "m²"],
+        ["Groennorm per woning", g.value()/programma["woningen"].value() if programma["woningen"].value() != 0 else "-", "m²/woning"],
+        ["Waternorm per woning", w.value()/programma["woningen"].value() if programma["woningen"].value() != 0 else "-", "m²/woning"]],
+        columns=["Onderdeel", "Waarde", "Eenheid"])
+    
+    out_programma = pd.DataFrame([
+        ["Totaal aantal woningen", programma["woningen"].value(), "Aantal"],
+        ["Aantal sociale woningen", programma["sociaal"].value(), "Aantal"],
+        ["Aantal betaalbare/ middenhuur woningen", programma["betaalbaar"].value(), "Aantal"],
+        ["Aantal m² commercieel vastgoed", programma["niet_wonen_comm"].value(), "m²"],
+        ["Aantal m² maatschappelijk vastgoed", programma["niet_wonen_maat"].value(), "m²"]],
+        columns=["Onderdeel", "Waarde", "Eenheid"])
+    
+    out_programma_perc = pd.DataFrame([
+        ["Percentage sociale woningen", programma["sociaal"].value()/programma["woningen"].value() *100 if programma["woningen"].value() != 0 else "-", "%"],
+        ["Percentage betaalbare/ middenhuur woningen", programma["betaalbaar"].value()/programma["woningen"].value() *100 if programma["woningen"].value() != 0 else "-", "%"]],
+        columns=["Onderdeel", "Waarde", "Eenheid"])
+    
+    out_parkeren = pd.DataFrame([
+        ["Parkeerplaatsen in openbaar gebied t.b.v. woningen", parkeren["parkeren_tbv_wonen"].value(), "Aantal"],
+        ["Parkeerplaatsen in openbaar gebied t.b.v. commercieel vastgoed", parkeren["parkeren_tbv_nwonen_comm"].value(), "Aantal"],
+        ["Parkeerplaatsen in openbaar gebied t.b.v. maatschappelijk vastgoed", parkeren["parkeren_tbv_nwonen_maat"].value(), "Aantal"]],
+        columns=["Onderdeel", "Waarde", "Eenheid"])
+
+
+    housing_type_parents = df_wonen["Type parent"].unique()
+    housing_type_children = inv_map(df_wonen["Type parent"].to_dict())
+    wonen_rows = []
+    for tp in housing_type_parents:
+        num_used = 0
+        for t in housing_type_children[tp]:
+            aantal = aw[t].value()
+            # Only show a row with this number of layers if it is actually used
+            if aantal > 0:
+                num_used += 1
+                wonen_rows.append({
+                    'Type': tp.replace('_', ' '),
+                    'Aantal': aantal,
+                    'Aantal lagen': df_wonen.loc[t, "Lagen"],
+                    'Totaal uitgeefbaar gebied (m²)': aantal * df_wonen.loc[t, "Uitgeefbaar"],
+                    'Totale residuele grondwaarde (€)': aantal * df_wonen.loc[t, "Grondwaarde per woning"]
+                })
+        # If none of this housing type are used at all, we still add a row indicating that none were used
+        if num_used == 0:
+            wonen_rows.append({
+                'Type': tp.replace('_', ' '),
+                'Aantal': 0,
+                'Aantal lagen': 0,
+                'Totaal uitgeefbaar gebied (m²)': 0,
+                'Totale residuele grondwaarde (€)': 0
+            })
+    out_wonen = pd.DataFrame(wonen_rows)
+
+
+    non_housing_types = df_niet_wonen.index.unique()
+    comm_rows = []
+    maat_rows = []
+    for t in non_housing_types:
+        vvo = vnw[t].value()
+            # Only show a row with this number of layers if it is actually used
+        num_used += 1
+        row = {
+            'Type': t.replace('_', ' '),
+            'VVO (m²)': vvo,
+            'Aantal lagen': df_niet_wonen.loc[t, "Aantal bouwlagen"],
+            'Totaal uitgeefbaar gebied (m²)': vvo * df_niet_wonen.loc[t, "Uitgeefbaar per m² VVO"],   
+            'Totale residuele grondwaarde (€)': vvo * df_niet_wonen.loc[t, "Gemiddelde residuele grondwaarde per m² uitgeefbaar (€)"]
+        }
+
+        if df_niet_wonen.loc[t, "Commercieel"] == 1:
+            comm_rows.append(row)
+        else:
+            maat_rows.append(row)
+    out_comm = pd.DataFrame(comm_rows)
+    out_maat = pd.DataFrame(maat_rows)
+
+
+    parking_type_parents = df_parkeren_type["Type parent"].unique()
+    parking_type_children = inv_map(df_parkeren_type["Type parent"].to_dict())
+    parkeren_rows = []
+    for tp in parking_type_parents:
+        num_used = 0
+        for t in parking_type_children[tp]:
+            aantal = ap[t].value()
+            # Only show a row with this number of layers if it is actually used
+            if aantal > 0:
+                num_used += 1
+                row = {
+                    'Type': tp.replace('_', ' '),
+                    'Aantal parkeerplaatsen': aantal,
+                    'Totaal BVO (m²)': aantal * df_parkeren_type.loc[t, "BVO per parkeerplaats (m²)"],
+                    'Totale residuele grondwaarde (€)': aantal * df_parkeren_type.loc[t, "Gemiddelde residuele grondwaarde per parkeerplaats (€)"],
+                    'Aantal lagen': df_parkeren_type.loc[t, "Lagen"]
+                }
+                row['Footprint (m²)'] = row['Totaal BVO (m²)']/row['Aantal lagen']
+                parkeren_rows.append(row)
+        # If none of this housing type are used at all, we still add a row indicating that none were used
+        if num_used == 0:
+            parkeren_rows.append({
+                'Type': tp.replace('_', ' '),
+                'Aantal parkeerplaatsen': 0,
+                'Totaal BVO (m²)': 0,
+                'Totale residuele grondwaarde (€)': 0,
+                'Aantal lagen': 0
+            })
+
+    out_parkeren_types = pd.DataFrame(parkeren_rows)
+    return out_context, out_ruimtelijk, out_programma, out_programma_perc, out_parkeren, out_wonen, out_comm, out_maat, out_parkeren_types
+    
+
+def build_lp(df_wonen, df_niet_wonen, df_parkeren_type, constraints):
     M = 1e10
+    eps = 1e-6
 
     # If set to True, only one choice of layer per (parking/housing) type is possible.
     # If set to False, several choices of layers per type can be used
@@ -74,642 +331,343 @@ def solver(df_wonen, df_nwonen_comm, df_nwonen_maat, df_wonen_parkeren, df_parke
     homogenize_layers_wonen = False
     homogenize_layers_parking = False
 
-    # ---- Creating DataFrames -----
-    # Before turning the data into dictionaries, we modify dataframes.
-    # This includes a join between df_wonen and df_wonen_parkeren,
-    # as well as splitting of housing and parking types for possible layers
 
-    df_wonen = df_wonen.copy()
-    df_nwonen_comm = df_nwonen_comm.copy()
-    df_nwonen_maat = df_nwonen_maat.copy()
-    df_wonen_parkeren = df_wonen_parkeren.copy()
-    df_parkeren_type = df_parkeren_type.copy()
-    df_constraints = df_constraints.copy()
-    df_constraints_perc = df_constraints_perc.copy()
+    housing_types = df_wonen.index.to_list()
+    non_housing_types = df_niet_wonen.index.to_list()
+    parking_types = df_parkeren_type.index.to_list()
 
-    kosten_groen = df_kosten.loc[df_kosten['Kosten'] == 'Kosten Groen', 'Waarde'].values[0]
-    kosten_water = df_kosten.loc[df_kosten['Kosten'] == 'Kosten Water', 'Waarde'].values[0]
-    kosten_infra = df_kosten.loc[df_kosten['Kosten'] == 'Kosten Infrastructuur', 'Waarde'].values[0]
-    bouwrijp_maken = df_kosten.loc[df_kosten['Kosten'] == 'Bouwrijp maken gebied', 'Waarde'].values[0]
+    # Create dictionaries for niet wonen types
+    is_maatschappelijk_nwonen = df_niet_wonen["Maatschappelijk"].to_dict()
+    is_commercieel_nwonen = df_niet_wonen["Commercieel"].to_dict()
+    
+    min_opp_nwonen = df_niet_wonen["Minimaal VVO (m²)"].to_dict()
+    max_opp_nwonen = df_niet_wonen["Maximaal VVO (m²)"].to_dict()
+    vormfactor_nwonen = to_dict_not_na(df_niet_wonen["Vormfactor"])
 
-    df_nwonen_comm['Commercieel'] = 1
-    df_nwonen_comm['Maatschappelijk'] = 0
+    uitgeefbaar_per_m2_vvo_nwoning = to_dict_not_na(df_niet_wonen["Uitgeefbaar per m² VVO"])
+    grondwaarde_per_m2_uitgeefbaar_nwoning = to_dict_not_na(df_niet_wonen["Gemiddelde residuele grondwaarde per m² uitgeefbaar (€)"])
+    
+    pp_per_100_m2_bvo_nwonen = df_niet_wonen["Parkeerplaatsen per 100 m² BVO"].fillna(0).to_dict()
+    infra_per_m2_vvo_nwonen = df_niet_wonen["Infrastructuur benodigd in openbaar gebied per m² VVO (excl parkeren) (m²)"].fillna(0).to_dict()
 
-    df_nwonen_maat['Commercieel'] = 0
-    df_nwonen_maat['Maatschappelijk'] = 1
+     # grondwaarde
+    # uitgeefbaar
+    # parkeren
+    # TODO
 
-    df_niet_wonen = pd.concat([df_nwonen_comm, df_nwonen_maat])
+    # Create dictionaries for wonen types
+    housing_type_parents = df_wonen["Type parent"].unique()
+    housing_type_children = inv_map(df_wonen["Type parent"].to_dict())
 
-    df_wonen, df_niet_wonen, constraints = calculate_priority_and_constraints(df_wonen, df_niet_wonen, df_constraints, df_constraints_perc)
+    is_sociaal_wonen = df_wonen["Sociale woning"].to_dict()
+    is_betaalbaar_wonen = df_wonen["Betaalbaar/ Middenduur woning"].to_dict()
 
-    df_wonen['Type'] = df_wonen['Type'].str.strip().str.replace('[-\s]+', '_', regex=True)
-    df_niet_wonen['Type'] = df_niet_wonen['Type'].str.strip().str.replace('[-\s]+', '_', regex=True)
-    df_wonen_parkeren['Type'] = df_wonen_parkeren['Type'].str.strip().str.replace('[-\s]+', '_', regex=True)
-    df_parkeren_type['Type'] = df_parkeren_type['Type'].str.strip().str.replace('[-\s]+', '_', regex=True)
+    min_wonen_type = df_wonen["Minimaal aantal van type woning"].fillna(0).to_dict()
+    min_wonen = df_wonen["Minimaal aantal woningen"].fillna(0).to_dict()
+    max_wonen = df_wonen["Maximaal aantal woningen"].to_dict()
 
-    df_niet_wonen['m2 nodig'] = df_niet_wonen['m2']
-    df_niet_wonen['Residuele grondwaarde/m2'] = df_niet_wonen['Residuele grondwaarde m2 uitgeefbaar'] * df_niet_wonen['Uitgeefbaar'] # berekening?
-
-    #  Fill unconstrained values of wonen en nwonen
-    df_wonen['Min van type woning'] = df_wonen['Min van type woning'].fillna(0)
-    df_wonen['Min woningen'] = df_wonen['Min woningen'].fillna(0)
-    df_wonen['Max woningen'] = df_wonen['Max woningen'].fillna(M)
-
-    df_niet_wonen['Min opp m2'] = df_niet_wonen['Min opp m2'].fillna(0)
-    df_niet_wonen['Max opp m2'] = df_niet_wonen['Max opp m2'].fillna(M)
-
-    df_wonen_parkeren['Parkeren buiten terrein model'] = df_wonen_parkeren['Parkeernorm voor model'] - df_wonen_parkeren['Parkeren op eigen terrein']
-
-    # We add a relevant column from df_wonen_parkeren to df_wonen
-    # We want to do this in the DataFrame to make our lives easier once we make the dictionaries
-    # We use join to make sure it does not break down if one of the two data frames has a different order of the types
-    df_wonen = df_wonen.set_index("Type").join(df_wonen_parkeren[["Type", 'Parkeren buiten terrein model']].set_index("Type")).reset_index()
+    uitgeefbaar_per_woning = df_wonen["Uitgeefbaar"].to_dict()
+    grondwaarde_per_woning = df_wonen["Grondwaarde per woning"].to_dict()
+    
+    infra_per_woning_ex_pp = to_dict_not_na(df_wonen["Infrastructuur benodigd in openbaar gebied per woning (excl. parkeren) (m²)"])
+    pp_per_woning = to_dict_not_na(df_wonen["Waarvan parkeren buiten eigen terrein"])
+    
 
 
-    # Split housing types (parents) into one type (child) per layer
-    # The df_wonen dataframe is replaced by a new one with new rows
-    # We end up with housing type parents (original types) and children (type + layer)
-    df_wonen["Lagen"] = df_wonen["Min lagen"]
-    df_wonen["Type parent"] = df_wonen["Type"]
+    # Create dictionaries for parkeren types
+    parking_type_parents = df_parkeren_type["Type parent"].unique()
+    parking_type_children = inv_map(df_parkeren_type["Type parent"].to_dict())
+    lagen_pp = to_dict_not_na(df_parkeren_type["Lagen"])
+    bvo_pp = to_dict_not_na(df_parkeren_type["BVO per parkeerplaats (m²)"])
+    res_grondwaarde_pp = to_dict_not_na(df_parkeren_type["Gemiddelde residuele grondwaarde per parkeerplaats (€)"])
+    discount_factor_pp = df_parkeren_type["Verminderende Factor Grondwaarde per laag"].fillna(0).to_dict()
+
+    prob = LpProblem("Model", LpMaximize)
+    aw = LpVariable.dicts("Aantal_woning", housing_types, lowBound=0, cat=LpInteger)
+    yh = LpVariable.dicts("Binary", housing_types, cat="Binary")  # Binary variables, whether housing type placed
+    ap = LpVariable.dicts("Aantal_parkeren", parking_types, lowBound=0, cat=LpInteger)
+    vnw = LpVariable.dicts("Oppervlakte_niet_wonen", non_housing_types, lowBound=0, cat=LpInteger)
+    
+    g = LpVariable("g", lowBound=0, cat=LpInteger)
+    w = LpVariable("w", lowBound=0, cat=LpInteger)
+
+    # # TODO check deze berekningen
+    # grondwaarde_woningen = lpSum([grondwaarde_per_woning[i] * aw[i] for i in housing_types])
+    # grondwaarde_niet_wonen = lpSum([grondwaarde_per_nwoning[i] * anw[i] for i in non_housing_types])
+    # grondwaarde_parkeren = lpSum([res_grondwaarde_pp[i] * ap[i] *
+    #                                 (1 - (discount_factor_pp[i] * lagen_pp[i])) for i
+    #                                 in parking_types])
+
+
+    # groennorm per woning cannot be implemented here,
+    ruimtelijk = {
+        "opp_uitgeefbaar": (lpSum([uitgeefbaar_per_woning[i] * aw[i] for i in housing_types]) +
+                            lpSum([uitgeefbaar_per_m2_vvo_nwoning[i] * vnw[i] for i in non_housing_types])),
+        "opp_infra_ex_parkeren": lpSum([infra_per_m2_vvo_nwonen[i] * vnw[i] for i in non_housing_types]) + lpSum([infra_per_woning_ex_pp[i] * aw[i] for i in housing_types]),
+        "opp_parkeren": lpSum([ap[i] * bvo_pp[i] / lagen_pp[i] for i in parking_types]),
+    }
+
+    programma = {
+        "woningen": lpSum([aw[i] for i in housing_types]),
+        "sociaal": lpSum([aw[i] for i in housing_types if is_sociaal_wonen[i]]),
+        "betaalbaar": lpSum([aw[i] for i in housing_types if is_betaalbaar_wonen[i]]),
+        "niet_wonen_comm": lpSum([vnw[i] for i in non_housing_types if is_commercieel_nwonen[i]]),
+        "niet_wonen_maat": lpSum([vnw[i] for i in non_housing_types if is_maatschappelijk_nwonen[i]]),
+    }
+
+    # Percentages can be implemented as constraints, but we cannot compute them here. Has to be done after solving
+
+    parkeren_fractional = {
+        "parkeren_tbv_wonen": lpSum([pp_per_woning[i] * aw[i] for i in housing_types]),
+        "parkeren_tbv_nwonen_comm": lpSum([pp_per_100_m2_bvo_nwonen[i] * vnw[i] / vormfactor_nwonen[i] / 100 for i in non_housing_types if is_commercieel_nwonen[i]]),
+        "parkeren_tbv_nwonen_maat": lpSum([pp_per_100_m2_bvo_nwonen[i] * vnw[i] / vormfactor_nwonen[i] / 100 for i in non_housing_types if is_maatschappelijk_nwonen[i]]),
+    }
+
+        # Parking tbv integer maken
+    p_wonen = LpVariable("pw", cat=LpInteger, lowBound=0)
+    p_nwonen_comm = LpVariable("pnw_comm", cat=LpInteger, lowBound=0)
+    p_nwonen_maat = LpVariable("pnw_maat", cat=LpInteger, lowBound=0)
+
+    prob += p_wonen >= parkeren_fractional["parkeren_tbv_wonen"] 
+    prob += p_nwonen_comm >= parkeren_fractional["parkeren_tbv_nwonen_comm"]
+    prob += p_nwonen_maat >= parkeren_fractional["parkeren_tbv_nwonen_maat"]
+
+    prob += p_wonen <= parkeren_fractional["parkeren_tbv_wonen"] + 1 - eps
+    prob += p_nwonen_comm <= parkeren_fractional["parkeren_tbv_nwonen_comm"] + 1 - eps
+    prob += p_nwonen_maat <= parkeren_fractional["parkeren_tbv_nwonen_maat"] + 1 - eps
+    
+    parkeren = {
+        "parkeren_tbv_wonen": p_wonen,
+        "parkeren_tbv_nwonen_comm": p_nwonen_comm,
+        "parkeren_tbv_nwonen_maat": p_nwonen_maat,
+    }
+
+    prob += lpSum([ap[i] for i in parking_types]) == parkeren["parkeren_tbv_wonen"] + parkeren["parkeren_tbv_nwonen_comm"] + parkeren["parkeren_tbv_nwonen_maat"]
+
+
+    context = {
+        "opp": (ruimtelijk["opp_uitgeefbaar"] + 
+                ruimtelijk["opp_infra_ex_parkeren"] + 
+                ruimtelijk["opp_parkeren"] + 
+                g + 
+                w)
+    }
+    
+
+    grondwaarde = {
+        "woningen": lpSum([grondwaarde_per_woning[i] * aw[i] for i in housing_types]),
+        "niet_wonen": lpSum([grondwaarde_per_m2_uitgeefbaar_nwoning[i] * 
+                             uitgeefbaar_per_m2_vvo_nwoning[i] * 
+                             vnw[i] 
+                             for i in non_housing_types]),
+        "parkeren": lpSum([res_grondwaarde_pp[i] * ap[i] *
+                                      (1 - (discount_factor_pp[i] * lagen_pp[i])) for i
+                                      in parking_types]),
+    }
+
+    costs = {
+        "cost_groen": g * constraints['kosten_groen'],
+        "cost_water": w * constraints['kosten_water'],
+        "cost_infra": ruimtelijk["opp_infra_ex_parkeren"] * constraints['kosten_infra'],
+        "cost_bouwrijp": context["opp"] * constraints['kosten_bouwrijp'],
+    }
+
+    context["grondwaarde"] = lpSum(grondwaarde["woningen"]
+                             + grondwaarde["niet_wonen"] 
+                             + grondwaarde["parkeren"]
+                             - costs["cost_groen"]
+                             - costs["cost_water"]
+                             - costs["cost_infra"]
+                             - costs["cost_bouwrijp"])
+
+    
+    # --- Min type woningen constraint ---
+    # This is layer-specific
+    for i in housing_types:
+        prob += aw[i] >= min_wonen_type[i] * yh[i], f"Conditional_Min_{i}"  # Ensure minimum if placed
+        prob += aw[i] <= M * yh[i], f"Placed_{i}"
+
+        # --- Homogenize layers within housing type ---
+    if homogenize_layers_wonen:
+        for htp in housing_type_parents:
+            prob += (lpSum([yh[ht] for ht in housing_type_children[htp]]) <= 1,
+                        f"Homogenize layers housing type {htp}")
+            
+    if homogenize_layers_parking:
+        yp = LpVariable.dicts("Binary", parking_types,
+                                cat="Binary")  # Binary variables, whether housing type placed
+        for pt in parking_types:
+            prob += ap[pt] <= M * yp[pt], f"Used {pt}"
+
+        for ptp in parking_type_parents:
+            prob += (lpSum([yp[pt] for pt in parking_type_children[ptp]]) <= 1,
+                        f"Homogenize layers parking type {ptp}")
+
+    # The "Min" and "Max" are bounds on the total number of a type parent
+    # Since the variables are for type children (orig. type + nr of layers),
+    # this is a constraint on a sum of variables
+    for tp in housing_type_parents:
+        sum_amount_children = lpSum([aw[t] for t in housing_type_children[tp] ])
+        # IMPORTANT: we assume here the Min and Max woningen are EQUAL among housing type children.
+        # In practice this is true because we don't touch it when splitting the types
+        add_min_max_constraints(prob, sum_amount_children,
+                                    (min_wonen[housing_type_children[tp][0]],
+                                    max_wonen[housing_type_children[tp][0]]),
+                                    f"Min_{tp}")
+
+    # Minimum and maximum number of houses
+    add_min_max_constraints(prob, programma["woningen"], 
+                                constraints['woningen'], "Woningen")
+
+    # Sociaal housing constraints
+    add_min_max_constraints(prob, programma["sociaal"], 
+                                constraints['sociaal'], "Sociaal")
+
+    
+    # Since percentage constraints involve division, we need to linearize them
+    add_min_max_constraints(prob, programma["sociaal"], 
+                                constraints['perc_sociaal'],
+                                "Perc_Sociaal",
+                                multiplier=programma["woningen"])
+
+    # Betaalbaar housing constraints
+    add_min_max_constraints(prob, programma["betaalbaar"], 
+                                constraints['betaalbaar'], 
+                                "Betaalbaar")
+
+    add_min_max_constraints(prob, programma["betaalbaar"], 
+                                constraints['perc_betaalbaar'],
+                                "Perc_Betaalbaar",
+                                multiplier=programma["woningen"])
+    # Niet wonen
+
+    for nw_type in non_housing_types:
+        add_min_max_constraints(prob, vnw[nw_type],
+                                    (min_opp_nwonen[nw_type],
+                                    max_opp_nwonen[nw_type]),
+                                    f"VVO_{nw_type}")
+
+    add_min_max_constraints(prob, programma["niet_wonen_comm"],
+                                constraints['niet_wonen_comm'],
+                                "Niet_Wonen_Comm")
+
+    add_min_max_constraints(prob, programma["niet_wonen_maat"],
+                                constraints['niet_wonen_maat'],
+                                "Niet_Wonen_Maat")
+
+    # Groen
+    add_min_max_constraints(prob, g,
+                                constraints['norm_groen_pw'],
+                                "Groennorm",
+                                multiplier=programma["woningen"])
+    add_min_max_constraints(prob, g,
+                                constraints['opp_groen'],
+                                "Groenoppervlakte")
+
+    # Water
+    add_min_max_constraints(prob, w,
+                                constraints['norm_water_pw'],
+                                "Waternorm",
+                                multiplier=programma["woningen"])
+    
+    add_min_max_constraints(prob, w,
+                                constraints['opp_water'],
+                                "Wateroppervlakte")
+    
+    # Parking
+
+    # Make sure there is enough parking
+    total_parking = lpSum([ap[i] for i in parking_types])
+
+    total_parking_required = parkeren["parkeren_tbv_wonen"] + parkeren["parkeren_tbv_nwonen_comm"] + parkeren["parkeren_tbv_nwonen_maat"]
+    prob += total_parking >= total_parking_required
+    prob += total_parking <= total_parking_required + 1
+
+    prob += context["opp"] >= constraints['opp'] - 1 + eps
+    prob += context["opp"] <= constraints['opp']
+
+    # Grondwaarde
+    add_min_max_constraints(prob, context["grondwaarde"],
+                                constraints['grondwaarde'],
+                                "Grondwaarde")
+
+
+
+    return prob, (aw, yh, ap, vnw, g, w), (context, grondwaarde, ruimtelijk, programma, parkeren)
+
+
+
+def set_pre_optimized_constraints(lp, context, grondwaarde, ruimtelijk, programma, parkeren, pre_optimized_for, pre_optimized_value):
+    objective_variable, name = get_objective(context, grondwaarde,ruimtelijk, programma, parkeren, pre_optimized_for)
+    lp += objective_variable >= pre_optimized_value - 0.5
+
+def get_objective(context, grondwaarde, ruimtelijk, programma, parkeren, optimize_for):
+    if optimize_for == 'Grondwaarde':
+        return context["grondwaarde"], "Optimize_Grondwaarde"
+    elif optimize_for == 'Woonprogramma':
+        return programma["woningen"], "Optimize_Woningen"
+    elif optimize_for == 'Uitgeefbaar':
+        return ruimtelijk["opp_uitgeefbaar"], "Optimize_Uitgeefbaar"  
+    elif optimize_for == 'Betaalbaar en sociaal woonprogramma':
+        return programma["betaalbaar"] + programma["sociaal"], "Optimize_Betaalbaar_Sociaal_Woningen"
+    else:
+        raise Exception("Undefined objective for optimization problem")
+
+# Split housing types (parents) into one type (child) per layer
+# The df_wonen dataframe is replaced by a new one with new rows
+# We end up with housing type parents (original types) and children (type + layer)
+def split_layers(df, min_layers_series, max_layers_series, split_mask_series):
+    df = df.copy()
+    df["Min lagen"] = min_layers_series
+    df["Max lagen"] = max_layers_series
+    df["Split lagen"] = split_mask_series
+    df["Lagen"] = min_layers_series
+
+    df = df.reset_index()
+    df["Type parent"] = df["Type"]
+
     new_rows = []
-    housing_type_parents = []
-    for index, row in df_wonen.iterrows():
-        housing_type_parents.append(row["Type"])
-        if row['Variabel aant. lagen']:
+    type_parents = []
+    for index, row in df.iterrows():
+        type_parents.append(row["Type"])
+        if row["Split lagen"]:
             opties_voor_lagen = range(int(row['Min lagen']), int(row['Max lagen']) + 1)
             for i in opties_voor_lagen:
                 new_row = row.copy()
                 new_row["Lagen"] = i
-                new_row["Type"] = f"{row['Type']} ({i} {'lagen' if i > 1 else 'laag'})"
+                new_row["Type"] = f"{row["Type"]} ({i} {'lagen' if i > 1 else 'laag'})"
                 new_rows.append(new_row)
         else:
             new_rows.append(row)
-    df_wonen = pd.DataFrame(columns=df_wonen.columns, data=new_rows)
-
-    # With each housing type having a set number of layers, we can compute Uitgeefbaar woning
-    df_wonen["Uitgeefbaar woning"] = df_wonen["BVO"] / df_wonen["Lagen"] / df_wonen["Bebouwd"]
-
-
-    # Split parking typologies into one per layer
-    # Similar to the splitting per housing type
-
-    df_parkeren_type["Lagen"] = 1
-    df_parkeren_type["Type parent"] = df_parkeren_type["Type"]
-    new_rows = []
-    parking_type_parents = []
-    for index, row in df_parkeren_type.iterrows():
-        parking_type_parents.append(row["Type"])
-        if int(row['Max aantal lagen']) > 1:
-            opties_voor_lagen = range(1, int(row['Max aantal lagen']) + 1)
-            for i in opties_voor_lagen:
-                new_row = row.copy()
-                new_row["Lagen"] = i
-                new_row["Type"] = f"{row['Type']} ({i} {'lagen' if i > 1 else 'laag'})"
-                new_rows.append(new_row)
-        else:
-            new_rows.append(row)
-    df_parkeren_type = pd.DataFrame(columns=df_parkeren_type.columns, data=new_rows)
-
-    # Only now do we compute all the types (for housing an parking these are actually the children)
-    housing_types = df_wonen['Type'].to_list()
-    niet_wonen_types = df_niet_wonen['Type'].to_list()
-    parkeren_types = df_parkeren_type['Type'].to_list()
-
-    # ---- Creating Dictionaries -----
-
-    # Inverts a map. So values become keys,
-    # and keys become (lists of) values (if values are not unique, which here they are typically not)
-    def inv_map(d):
-        inv = {}
-        for k, v in d.items():
-            inv[v] = inv.get(v, []) + [k]
-        return inv
-
-    # Create dictionaries for niet wonen types
-    grondwaarde_per_nwoning = dict(zip(df_niet_wonen['Type'], df_niet_wonen['Residuele grondwaarde/m2']))
-    maatschapppelijk = dict(zip(df_niet_wonen['Type'], df_niet_wonen['Maatschappelijk']))
-    commercieel = dict(zip(df_niet_wonen['Type'], df_niet_wonen['Commercieel']))
-    area_per_nwoning = dict(zip(df_niet_wonen['Type'], df_niet_wonen['m2 nodig']))
-    pp_per_nwoning = dict(zip(df_niet_wonen['Type'], df_niet_wonen['Benodigde PP per m2']))
-    min_nwonen = dict(zip(df_niet_wonen['Type'], df_niet_wonen['Min opp m2']))
-    max_nwonen = dict(zip(df_niet_wonen['Type'], df_niet_wonen['Max opp m2']))
-    uitgeefbaar_nwoning = dict(zip(df_niet_wonen['Type'], df_niet_wonen['Uitgeefbaar']))
-
-
-    # Create dictionaries for wonen types
-    housing_type_parent = dict(zip(df_wonen["Type"], df_wonen["Type parent"]))
-    housing_type_children = inv_map(housing_type_parent)
-    grondwaarde_per_woning = dict(zip(df_wonen['Type'], df_wonen['Residuele grondwaarde per woning']))
-    is_sociaal = dict(zip(df_wonen['Type'], df_wonen['Sociaal']))
-    is_betaalbaar = dict(zip(df_wonen['Type'], df_wonen['Betaalbaar/ Middenduur']))
-    min_wonen_type = dict(zip(df_wonen['Type'], df_wonen['Min van type woning']))
-    min_wonen = dict(zip(df_wonen['Type'], df_wonen['Min woningen']))
-    max_wonen = dict(zip(df_wonen['Type'], df_wonen['Max woningen']))
-    uitgeefbaar_woning = dict(zip(df_wonen['Type'], df_wonen['Uitgeefbaar woning']))
-    parkeren_buiten_terrein = dict(zip(df_wonen['Type'], df_wonen["Parkeren buiten terrein model"]))
-
-    # Create dictionaries for parkeren types
-    parking_type_parent = dict(zip(df_parkeren_type['Type'], df_parkeren_type['Type parent']))
-    parking_type_children = inv_map(parking_type_parent)
-    lagen_pp = dict(zip(df_parkeren_type['Type'], df_parkeren_type['Lagen']))
-    bvo_pp = dict(zip(df_parkeren_type['Type'], df_parkeren_type['Opp m2 BVO per P.P.']))
-    res_grondwaarde_pp = dict(zip(df_parkeren_type['Type'], df_parkeren_type['Res. Grondwaarde per P.P.']))
-    discount_factor_pp = dict(zip(df_parkeren_type['Type'], df_parkeren_type['Verminderende Factor Grondwaarde per laag']))
-
-
-    # Builds the LP.  uses the function variables
-    # Optimize for label is the name of the LP objective (as it is written in the UI)
-    # If pre-optimized for is also such a label, then the corresponding objective will be fixed at
-    # pre-optimized-value in the LP. Hence, the objective becomes a "second objective"
-    def build_lp(optimize_for_label, pre_optimized_for = None, pre_optimized_value = None):
-
-        if optimize_for == 'Grondwaarde':
-            prob = LpProblem("Optimize_Grondwaarde", LpMaximize)
-        elif optimize_for == 'Woonprogramma':
-            prob = LpProblem("Optimize_Woningen", LpMaximize)
-        elif optimize_for == 'Uitgeefbaar':
-            prob = LpProblem("Optimize_Uitgeefbaar", LpMaximize)
-        elif optimize_for == 'Betaalbaar en sociaal woonprogramma':
-            prob = LpProblem("Optimize_Betaalbaar_Sociaal_Woningen", LpMaximize)
-        else:
-            raise Exception("Undefined objective for optimization problem")
-
-        # Define variables
-        x = LpVariable.dicts("Aantal_woning", housing_types, lowBound=0, cat=LpInteger)
-        y = LpVariable.dicts("Binary", housing_types, cat="Binary")  # Binary variables, whether housing type placed
-        a = LpVariable.dicts("Aantal_parkeren", parkeren_types, lowBound=0, cat=LpInteger)
-        z = LpVariable.dicts("Aantal_niet_wonen", niet_wonen_types, lowBound=0, cat=LpInteger)
-
-
-
-        # Objective function
-        grondwaarde_woningen = lpSum([grondwaarde_per_woning[i] * x[i] for i in housing_types])
-        grondwaarde_niet_wonen = lpSum([grondwaarde_per_nwoning[i] * z[i] for i in niet_wonen_types])
-        grondwaarde_parkeren = lpSum([res_grondwaarde_pp[i] * a[i] *
-                                      (1 - (discount_factor_pp[i] * lagen_pp[i])) for i
-                                      in parkeren_types])
-
-        # Compute areas
-        total_woningen = lpSum([x[i] for i in housing_types])
-
-        infra_area = (lpSum(
-            [x[i] * df_wonen.loc[df_wonen['Type'] == i, 'Infra niet PP'].values[0] for i in housing_types])
-                      + lpSum(
-                    [z[j] * df_niet_wonen.loc[df_niet_wonen['Type'] == j, 'Benodigde infra'].values[0] for j in
-                     niet_wonen_types]))
-
-
-        # def df_val(df, idx_col, idx, column):
-        #     return df.loc[df[idx_col] == idx, column].values[0]
-
-        total_area_wonen = lpSum([x[i] * uitgeefbaar_woning[i]
-                                  for i in housing_types])  # Variabel lagen
-
-        # === Constraints ===
-
-        # --- Min type woningen constraint ---
-        # This is layer-specific
-        for i in housing_types:
-            prob += x[i] >= min_wonen_type[i] * y[i], f"Conditional_Min_{i}"  # Ensure minimum if placed
-            prob += x[i] <= M * y[i], f"Placed_{i}"
-
-        # --- Homogenize layers within housing type ---
-        if homogenize_layers_wonen:
-            for htp in housing_type_parents:
-                print(housing_type_children)
-                prob += (lpSum([y[ht] for ht in housing_type_children[htp]]) <= 1,
-                         f"Homogenize layers housing type {htp}")
-
-        if homogenize_layers_parking:
-            yp = LpVariable.dicts("Binary", parkeren_types,
-                                  cat="Binary")  # Binary variables, whether housing type placed
-            for pt in parkeren_types:
-                prob += a[pt] <= M * yp[pt], f"Used {pt}"
-
-            for ptp in parking_type_parents:
-                prob += (lpSum([yp[pt] for pt in parking_type_children[ptp]]) <= 1,
-                         f"Homogenize layers parking type {ptp}")
-
-        # --- Min and max per type parent ----
-
-        # The "Min" and "Max" are bounds on the total number of a type parent
-        # Since the variables are for type children (orig. type + nr of layers),
-        # this is a constraint on a sum of variables
-        for tp in housing_type_parents:
-            sum_amount_children = lpSum([x[t] for t in housing_type_children[tp] ])
-            # IMPORTANT: we assume here the Min and Max woningen are EQUAL among housing type children.
-            # In practice this is true because we don't touch it when splitting the types
-            prob += sum_amount_children >= min_wonen[housing_type_children[tp][0]], f"Min_{tp}"
-            prob += sum_amount_children <= max_wonen[housing_type_children[tp][0]], f"Max_{tp}"
-
-        # Niet wonen is not split, so there are no parents/children, just types.
-        for i in niet_wonen_types:
-            prob += z[i] >= min_nwonen[i], f"Min_{i}"
-            prob += z[i] <= max_nwonen[i], f"Max_{i}"
-
-
-        # Parkeren
-        total_parking_required_wonen = lpSum(
-            [parkeren_buiten_terrein[i] * x[i]
-             for i in housing_types])  # 12 is the m2 per parking spot
-        total_parking_required_niet_wonen = lpSum([pp_per_nwoning[i] * z[i] for i in niet_wonen_types])
-
-        total_parking_required = total_parking_required_wonen + total_parking_required_niet_wonen
-
-        prob += lpSum([a[i] for i in parkeren_types]) >= total_parking_required, "Total_Parking"
-
-        # Niet wonen area constraint
-        total_area_niet_wonen = lpSum([area_per_nwoning[i] * z[i] for i in niet_wonen_types])
-
-        total_woningen = lpSum([x[i] for i in housing_types])
-
-        # Minimum and maximum number of houses
-        prob += total_woningen >= constraints['min_woningen'], "Min_Woningen"
-        prob += total_woningen <= constraints['max_woningen'], "Max_Woningen"
-
-        # Sociaal housing constraints
-        total_sociaal = lpSum([is_sociaal[i] * x[i] for i in housing_types])
-        prob += total_sociaal >= constraints['min_sociaal'], "Min_Sociaal"
-        prob += total_sociaal <= constraints['max_sociaal'], "Max_Sociaal"
-
-        # Since percentage constraints involve division, we need to linearize them
-        prob += total_sociaal >= constraints['min_perc_sociaal'] * total_woningen, "Min_Perc_Sociaal"
-        prob += total_sociaal <= constraints['max_perc_sociaal'] * total_woningen, "Max_Perc_Sociaal"
-
-        total_betaalbaar = lpSum([is_betaalbaar[i] * x[i] for i in housing_types])
-
-        # Betaalbaar housing constraints
-        prob += total_betaalbaar >= constraints['min_betaalbaar'], "Min_Betaalbaar"
-        prob += total_betaalbaar <= constraints['max_betaalbaar'], "Max_Betaalbaar"
-
-        # Since percentage constraints involve division, we need to linearize them
-        prob += total_betaalbaar >= constraints['min_perc_betaalbaar'] * total_woningen, "Min_Perc_Betaalbaar"
-        prob += total_betaalbaar <= constraints['max_perc_betaalbaar'] * total_woningen, "Max_Perc_Betaalbaar"
-
-        # Niet wonen constraints
-        total_nwonen = lpSum([z[i] for i in niet_wonen_types])
-        prob += total_nwonen >= constraints['min_niet_wonen'], "Min_Niet_Wonen"
-        prob += total_nwonen <= constraints['max_niet_wonen'], "Max_Niet_Wonen"
-
-
-        # Commercieel niet wonen constraints
-        total_commercieel = lpSum([commercieel[i] * z[i] for i in niet_wonen_types])
-        prob += total_commercieel >= constraints[
-            'min_niet_wonen_comm'], "Min_Niet_Wonen_Comm"
-        prob += total_commercieel <= constraints[
-            'max_niet_wonen_comm'], "Max_Niet_Wonen_Comm"
-
-        # == Groen en Water norm == #
-
-        # Total parking footprint for Parkeerplaatsen
-        total_parking_footprint = lpSum([
-            (a[i] * bvo_pp[i]) / lagen_pp[i]
-            for i in parkeren_types
-        ])
-
-
-        remaining_available_area = constraints[
-                                       'max_opp'] - total_area_wonen - total_parking_footprint - total_area_niet_wonen - infra_area
-
-        g = LpVariable("g", lowBound=0, cat="LpInteger")
-        prob += g >= total_woningen * constraints['min_norm_groen']
-        prob += g >= constraints['min_opp_groen']
-        prob += g <= constraints['max_opp_groen']
-
-        w = LpVariable("w", lowBound=0, cat="LpInteger")
-        prob += w >= total_woningen * constraints['min_norm_water']
-        prob += w >= constraints['min_opp_water']
-        prob += w <= constraints['max_opp_water']
-
-        prob += g + w <= remaining_available_area
-
-
-        # ====  Cost components =====
-
-        total_opp_gebied = total_area_wonen + total_area_niet_wonen + total_parking_footprint + infra_area + g + w
-
-        cost_groen = g * kosten_groen
-        cost_water = w * kosten_water
-
-        cost_infra = infra_area * kosten_infra
-        cost_bouwrijp = total_opp_gebied * bouwrijp_maken
-
-
-
-        # full area constraint
-        prob += total_opp_gebied <= constraints['max_opp'], "Max_Oppervlakte_Gebied"
-        prob += total_opp_gebied >= constraints['min_opp'], "Min_Oppervlakte_Gebied"
-
-        # === OBJECTIVES === #
-
-        # Put possible objectives in a variable so they can be easily extracted if used for pre-optimization
-        gw = LpVariable(name="Net_Grondwaarde", lowBound=None, upBound=None, cat=LpContinuous)
-        prob += gw == (grondwaarde_parkeren
-                    + grondwaarde_woningen
-                    + grondwaarde_niet_wonen
-                    - cost_groen
-                    - cost_water
-                    - cost_infra
-                    - cost_bouwrijp), "Net_Grondwaarde_constr"
-
-        # === grondwaarde constraint ===
-        prob += gw >= constraints['min_grondwaarde'], "Min_Grondwaarde"
-        prob += gw <= constraints['max_grondwaarde'], "Max_Grondwaarde"
-
-
-        tw = LpVariable(name="Total_Woningen", lowBound=None, upBound=None, cat=LpContinuous)
-        prob += tw == total_woningen, "Total_Woningen_constr"
-
-        totaal_uitgeefbaar = LpVariable(name="Totaal_Uitgeefbaar", lowBound=None, upBound=None, cat=LpContinuous)
-        prob += totaal_uitgeefbaar == (lpSum([x[t] * uitgeefbaar_woning[t] for t in housing_types])
-                                       + lpSum([z[t] * uitgeefbaar_nwoning[t] for t in niet_wonen_types]))
-
-        totaal_sociaal_en_betaalbaar = LpVariable(name="Totaal_Sociaal_Betaalbaar", lowBound=None, upBound=None, cat=LpContinuous)
-        prob += totaal_sociaal_en_betaalbaar == (total_sociaal + total_betaalbaar)
-
-        # Fix pre-optimized values in the LP
-        if pre_optimized_for == 'Grondwaarde':
-            print(f"Fix grondwaarde at {pre_optimized_value}")
-            # We need this -1 here or we will get infeasibility complaints. Probably has to do with rounding.
-            prob += gw >= pre_optimized_value - 1, f"Fix grondwaarde at {pre_optimized_value}"
-
-        elif pre_optimized_for == 'Woonprogramma':
-            prob += tw == pre_optimized_value, f"Fix total woningen at {pre_optimized_value}"
-
-        elif pre_optimized_for == "Uitgeefbaar":
-            # TODO check if this gives problems
-            prob += totaal_uitgeefbaar >= pre_optimized_value
-
-        elif pre_optimized_for == "Betaalbaar en sociaal woonprogramma":
-            prob += totaal_sociaal_en_betaalbaar == pre_optimized_value
-
-
-        # Add the actual objective
-        if optimize_for_label == 'Grondwaarde':
-            prob += gw, "Max_Grondwaarde"
-
-        elif optimize_for_label == 'Woonprogramma':
-            prob += tw, "Max_Woningen"
-
-        elif optimize_for_label == "Uitgeefbaar":
-            prob += totaal_uitgeefbaar
-
-        elif optimize_for_label == "Betaalbaar en sociaal woonprogramma":
-            prob += totaal_sociaal_en_betaalbaar
-
-        #TODO objective uitgeefbaar = sum uitgeefbaar * aantal van wonen, niet-wonen
-        # TODO sociaal /betaalbaar = sum aantal van die parents
-
-        return prob
-
-    print("Starting optimize.....")
-    print("First objective", optimize_for)
-
-    prob = build_lp(optimize_for)
-
-    # Solve the problem with first objective
-    prob.solve(PULP_CBC_CMD(msg=0))
-
-    # Output the solver status
-    print("Status:", LpStatus[prob.status])
-    if prob.status == 1:
-        # Output the results
-        print(f"Optimal solution found for objective 1: {optimize_for}. Solution:")
-        for v in prob.variables():
-            print(v.name, "=", v.varValue)
-
-    elif prob.status != 1:
-        for  name , constraint in prob.constraints.items():
-            print(name, ":", constraint.value())
-        print("No solution found for objective 1")
-        raise ValueError("No solution found for given input and constraints")
-
-    # Solve with second objective if necessary
-    if prob.status == 1 and optimize_for_2 != "Geen" and optimize_for_2 != optimize_for:
-        # check the original objective so we pass its optimal value for the second round of optimization.
-        if optimize_for == "Grondwaarde":
-            max_grondwaarde = prob.variablesDict()['Net_Grondwaarde'].value()
-            print(f"Solving for second objective {optimize_for_2}, value {max_grondwaarde} for {optimize_for}")
-            prob = build_lp(optimize_for_2, pre_optimized_for=optimize_for, pre_optimized_value=max_grondwaarde)
-
-        elif optimize_for == "Woonprogramma":
-            total_woningen = prob.variablesDict()['Total_Woningen'].value()
-            print(f"Solving for second objective {optimize_for_2}, value {total_woningen} for {optimize_for}")
-            prob = build_lp(optimize_for_2, pre_optimized_for=optimize_for, pre_optimized_value=total_woningen)
-
-        elif optimize_for == "Uitgeefbaar":
-            total_uitgeefbaar = prob.variablesDict()['Totaal_Uitgeefbaar'].value()
-            print(f"Solving for second objective {optimize_for_2}, value {total_uitgeefbaar} for {optimize_for}")
-            prob = build_lp(optimize_for_2, pre_optimized_for=optimize_for, pre_optimized_value=total_uitgeefbaar)
-
-        elif optimize_for == "Betaalbaar en sociaal woonprogramma":
-            total_sociaal_betaalbaar = prob.variablesDict()['Totaal_Sociaal_Betaalbaar'].value()
-            print(f"Solving for second objective {optimize_for_2}, value {total_sociaal_betaalbaar} for {optimize_for}")
-            prob = build_lp(optimize_for_2, pre_optimized_for=optimize_for, pre_optimized_value=total_sociaal_betaalbaar)
-        else:
-            raise ValueError(f"Second objective {optimize_for_2} not implemented.")
-
-        prob.solve(PULP_CBC_CMD(msg=0))
-
-        print("Did the second objective!")
-
-    # Extract the solution. Could be the LP for the first objective, or it could be the one for the second objective.
-    solution = None
-    if prob.status == 1:
-        solution = {v.name: v.varValue for v in prob.variables() if v.varValue is not None}
-        parking_house_area = 0
-
-        # Match solution variables with df_wonen 'Type' dynamically
-        for index, row in df_wonen_parkeren.iterrows():
-            for var_name, var_value in solution.items():
-                if row['Type'].replace(' ', '_') in var_name:  # Match housing type in variable name
-                    parking_house_area += var_value * row['Parkeren op eigen terrein']
-
-        # Output the results
-        print("Optimal solution found. Solution:")
-        for v in prob.variables():
-            print(v.name, "=", v.varValue)
-    else:
-        raise ValueError("No solution found for given input and constraints")
-
-
-    # Extract final chosen solution and layers
-    final_solution = solution
-
-    # Prepare helper functions to safely get solution values
-    def sol_val(var_prefix, t):
-        var_name = f"{var_prefix}_{t.replace('-', '_').replace(' ', '_')}"
-        if var_name not in final_solution:
-            raise ValueError(f"Variable {var_name} not found in solution. Available variables are: {final_solution.keys()}")
-        return final_solution[var_name]
-
-
-    # Fill df_wonen_out
-    wonen_rows = []
-    for tp in housing_type_parents:
-        num_used = 0
-        for t in housing_type_children[tp]:
-            aantal = sol_val("Aantal_woning", t)
-            # Only show a row with this number of layers if it is actually used
-            if aantal > 0:
-                num_used += 1
-                lagen = df_wonen.loc[df_wonen['Type'] == t, 'Lagen'].values[0]
-                uitgeefbaar_per_woning = df_wonen.loc[df_wonen['Type'] == t, 'Uitgeefbaar'].values[0]
-                grondwaarde_woning = grondwaarde_per_woning[t] * aantal
-                wonen_rows.append({
-                    'Type': tp.replace('_', ' '),
-                    'Aantal': aantal,
-                    'Lagen': lagen,
-                    'Uitgeefbaar m2': aantal * uitgeefbaar_per_woning,
-                    'Grondwaarde': grondwaarde_woning
-                })
-        # If none of this housing type are used at all, we still add a row indicating that none were used
-        if num_used == 0:
-            wonen_rows.append({
-                'Type': tp.replace('_', ' '),
-                'Aantal': 0,
-                'Lagen': 0,
-                'Uitgeefbaar m2': 0,
-                'Grondwaarde': 0
-            })
-
-    wonen_rows.append({
-        'Type': 'Totaal Sociaal',
-        'Aantal': sum(sol_val("Aantal_woning", i) * is_sociaal[i] for i in housing_types),
-        'Lagen': 'n.v.t',
-        'Uitgeefbaar m2': sum(sol_val("Aantal_woning", i) * is_sociaal[i] * df_wonen.loc[df_wonen['Type'] == i, 'Uitgeefbaar woning'].values[0] for i in housing_types),
-        'Grondwaarde': sum(sol_val("Aantal_woning", i) * grondwaarde_per_woning[i] * is_sociaal[i] for i in housing_types)
-    })
-    wonen_rows.append({
-        'Type': 'Totaal Betaalbaar',
-        'Aantal': sum(sol_val("Aantal_woning", i) * is_betaalbaar[i] for i in housing_types),	
-        'Lagen': 'n.v.t',
-        'Uitgeefbaar m2': sum(df_wonen.loc[df_wonen['Type'] == i, 'Uitgeefbaar woning'].values[0] * sol_val("Aantal_woning", i) * is_betaalbaar[i] for i in housing_types),
-        'Grondwaarde': sum(sol_val("Aantal_woning", i) * grondwaarde_per_woning[i] * is_betaalbaar[i] for i in housing_types)
-    })
-
-    wonen_rows.append({
-        'Type': 'Totaal',
-        'Aantal': sum(sol_val("Aantal_woning", i) for i in housing_types),
-        'Lagen': 'n.v.t',
-        'Uitgeefbaar m2': sum(df_wonen.loc[df_wonen['Type'] == i, 'Uitgeefbaar woning'].values[0] * sol_val("Aantal_woning", i) for i in housing_types),
-        'Grondwaarde': sum(sol_val("Aantal_woning", i) * grondwaarde_per_woning[i] for i in housing_types)
-    })
-    df_wonen_out = pd.DataFrame(wonen_rows, columns=['Type', 'Aantal', 'Lagen', 'Uitgeefbaar m2', 'Grondwaarde'])
-
-    # Fill df_nwonen_comm_out and df_nwonen_maat_out
-    comm_rows = []
-    maat_rows = []
-    for t in niet_wonen_types:
-        aantal = sol_val("Aantal_niet_wonen", t)
-        uitgeefbaar_per_type = df_niet_wonen.loc[df_niet_wonen['Type'] == t, 'Uitgeefbaar'].values[0]
-        grondwaarde_nwonen = grondwaarde_per_nwoning[t] * aantal
-
-        row = {
-            'Type': t.replace('_', ' '),
-            'Aantal': aantal,
-            'Uitgeefbaar m2': aantal * uitgeefbaar_per_type,
-            'Grondwaarde': grondwaarde_nwonen
-        }
-
-        if commercieel[t] == 1:
-            comm_rows.append(row)
-        else:
-            maat_rows.append(row)
-
-    comm_rows.append({
-        'Type': 'Totaal Commercieel',
-        'Aantal': sum(sol_val("Aantal_niet_wonen", j) * commercieel[j] for j in niet_wonen_types),
-        'Uitgeefbaar m2': sum(df_niet_wonen.loc[df_niet_wonen['Type'] == j, 'Uitgeefbaar'].values[0] * sol_val("Aantal_niet_wonen", j) * commercieel[j] for j in niet_wonen_types),
-        'Grondwaarde': sum(sol_val("Aantal_niet_wonen", j) * grondwaarde_per_nwoning[j] * commercieel[j] for j in niet_wonen_types)
-    })
-
-    maat_rows.append({
-        'Type': 'Totaal Maatschappelijk',
-        'Aantal': sum(sol_val("Aantal_niet_wonen", j) * maatschapppelijk[j] for j in niet_wonen_types),
-        'Uitgeefbaar m2': sum(df_niet_wonen.loc[df_niet_wonen['Type'] == j, 'Uitgeefbaar'].values[0] * sol_val("Aantal_niet_wonen", j) * maatschapppelijk[j] for j in niet_wonen_types),
-        'Grondwaarde': sum(sol_val("Aantal_niet_wonen", j) * grondwaarde_per_nwoning[j] * maatschapppelijk[j] for j in niet_wonen_types)
-    })
-
-    df_nwonen_comm_out = pd.DataFrame(comm_rows, columns=['Type', 'Aantal', 'Uitgeefbaar m2', 'Grondwaarde'])
-    df_nwonen_maat_out = pd.DataFrame(maat_rows, columns=['Type', 'Aantal', 'Uitgeefbaar m2', 'Grondwaarde'])
-
-    # Fill df_parkeren_out
-    parkeren_rows = []
-    for tp in parking_type_parents:
-        num_used = 0
-        for t in parking_type_children[tp]:
-            aantal_pp = sol_val("Aantal_parkeren", t)
-            # Only show if this number of parking layers is used
-            if aantal_pp > 0:
-                num_used += 1
-                totaal_bvo = aantal_pp * bvo_pp[t]
-                totaal_res_grondwaarde = aantal_pp * res_grondwaarde_pp[t] * (1 - (discount_factor_pp[t] * lagen_pp[t]))
-                footprint = (aantal_pp * bvo_pp[t]) /  lagen_pp[t]
-                parkeren_rows.append({
-                    'Type': parking_type_parent[t].replace('_', ' '),
-                    'Aantal P.P': aantal_pp,
-                    'Aantal lagen': lagen_pp[t],
-                    'Totaal BVO': totaal_bvo,
-                    'Totaal res. grondwaarde': totaal_res_grondwaarde,
-                    'Footprint': footprint
-                })
-        # If this type of parking is not used at all, still show one row
-        if num_used == 0:
-            parkeren_rows.append({
-                'Type': parking_type_parent[t].replace('_', ' '),
-                'Aantal P.P': 0,
-                'Aantal lagen': 0,
-                'Totaal BVO': 0,
-                'Totaal res. grondwaarde': 0,
-                'Footprint': 0
-            })
-
-    df_parkeren_out = pd.DataFrame(parkeren_rows, columns=['Type', 'Aantal P.P', 'Aantal lagen', 'Totaal BVO', 'Totaal res. grondwaarde', 'Footprint'])
-
-    # Fill df_ruimte_out
-    total_woningen_val = sum(sol_val("Aantal_woning", i) for i in housing_types)
-    total_area_wonen_val = sum(uitgeefbaar_woning[i] * sol_val("Aantal_woning", i) for i in housing_types)
-    total_area_niet_wonen_val = sum(area_per_nwoning[i] * sol_val("Aantal_niet_wonen", i) for i in niet_wonen_types)
-    total_parking_footprint_val = sum((sol_val("Aantal_parkeren", i) * bvo_pp[i]) / lagen_pp[i] for i in parkeren_types)
-
-    total_groen_allocated = final_solution['g']
-    total_water_allocated = final_solution['w']
-
-    total_infra = (sum(sol_val("Aantal_woning", i) * df_wonen.loc[df_wonen['Type'] == i, 'Infra niet PP'].values[0] for i in housing_types)
-                   + sum(sol_val("Aantal_niet_wonen", j) * df_niet_wonen.loc[df_niet_wonen['Type'] == j, 'Benodigde infra'].values[0] for j in niet_wonen_types))
-    
-    total_opp_gebied = total_area_wonen_val + total_area_niet_wonen_val + total_parking_footprint_val + total_infra + total_groen_allocated + total_water_allocated
-    # We can also compute uitgeefbaar and infra:
-    total_uitgeefbaar = (sum(sol_val("Aantal_woning", i) * df_wonen.loc[df_wonen['Type'] == i, 'Uitgeefbaar woning'].values[0] for i in housing_types)
-                         + sum(sol_val("Aantal_niet_wonen", j) * df_niet_wonen.loc[df_niet_wonen['Type'] == j, 'Uitgeefbaar'].values[0] for j in niet_wonen_types))
- 
-    grondwaarde_woningen = sum(sol_val("Aantal_woning", i) * grondwaarde_per_woning[i] for i in housing_types)
-    grondwaarde_nwonen = sum(sol_val("Aantal_niet_wonen", j) * grondwaarde_per_nwoning[j] for j in niet_wonen_types)
-    grondwaarde_parkeren = sum(sol_val("Aantal_parkeren", k) * res_grondwaarde_pp[k] * (1 - (discount_factor_pp[k] * lagen_pp[k]) ) for k in parkeren_types)
-
-    cost_groen = total_groen_allocated * kosten_groen
-    cost_water = total_water_allocated * kosten_water
-    cost_infra = total_infra * kosten_infra
-    cost_bouwrijp = total_opp_gebied * bouwrijp_maken
-
-    total_grondwaarde = grondwaarde_woningen + grondwaarde_nwonen + grondwaarde_parkeren - cost_groen - cost_water - cost_infra - cost_bouwrijp
-    
-    df_ruimte_out = pd.DataFrame([
-    ["Totaal opp. Gebied", "m2", int(total_opp_gebied)],
-    ["Uitgeefbaar", "m2", int(total_uitgeefbaar)],
-    ["Grondwaarde", "€", int(total_grondwaarde)],
-    ["Woonprogramma Sociaal perc.", "percentage", 
-     round((sum(sol_val("Aantal_woning", i) * is_sociaal[i] for i in housing_types) / total_woningen_val) * 100, 0) if total_woningen_val != 0 else 0],
-    ["Woonprogramma Betaalbaar perc.", "percentage", 
-     round((sum(sol_val("Aantal_woning", i) * is_betaalbaar[i] for i in housing_types) / total_woningen_val) * 100, 0) if total_woningen_val != 0 else 0],                                             
-    ["Groen", "m2", int(total_groen_allocated)],
-    ["Water", "m2", int(total_water_allocated)],
-    ["Infra", "m2", int(total_infra)],
-    ["Uitgeefbaar", "m2", int(total_uitgeefbaar)],
-    ["Groennorm", "m2/woning", int(constraints['min_norm_groen'])],
-    ["Waternorm", "m2/woning", int(constraints['min_norm_water'])]
-    ], columns=['Output', 'Eenheid', 'Hoeveelheid'])
-
-
-    return df_wonen_out, df_nwonen_comm_out, df_nwonen_maat_out, df_ruimte_out, df_parkeren_out 
+    df_split = pd.DataFrame(columns=df.columns, data=new_rows).set_index("Type")
+    return df_split
+
+# IN PLACE!
+def index_by_type(df):
+    df["Type"] = clean_string_series(df["Type"])
+    df.set_index("Type", inplace=True)
+
+def clean_string_series(series):
+    return series.str.strip().str.replace('[-\s]+', '_', regex=True)
+
+# Inverts a map. So values become keys,
+# and keys become (lists of) values (if values are not unique, which here they are typically not)
+def inv_map(d):
+    inv = {}
+    for k, v in d.items():
+        inv[v] = inv.get(v, []) + [k]
+    return inv
+
+def add_min_max_constraints(prob, var, mm, name, multiplier=1):
+    min, max = mm
+    if min is not None and not pd.isna(min):
+        prob += var >= min * multiplier, f"Min_{name}"
+    if max is not None and not pd.isna(max):
+        prob += var <= max * multiplier, f"Max_{name}"
+
+def to_dict_not_na(series):
+    assert_column_filled(series)
+    return series.to_dict()
+
+def assert_column_filled(column):
+    assert not column.isna().any(), f"Kolom '{column.name}' mist waarden. Vul de kolom helemaal in."
